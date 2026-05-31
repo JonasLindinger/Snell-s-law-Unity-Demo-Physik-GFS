@@ -58,7 +58,7 @@ namespace _Project.Scripts
         private void OnWavelengthChanged(float val)
         {
             controller.SetWavelength(val);
-            if (wavelengthText) wavelengthText.text = $"Wavelength: {Mathf.RoundToInt(val)} nm";
+            if (wavelengthText) wavelengthText.text = $"Wellenlänge: {Mathf.RoundToInt(val)} nm";
             
             // Hide wavelength slider if rainbow mode is on (it doesn't affect it)
             if (rainbowToggle && rainbowToggle.isOn)
