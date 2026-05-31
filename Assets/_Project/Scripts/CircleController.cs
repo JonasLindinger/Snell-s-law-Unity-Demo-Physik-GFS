@@ -67,7 +67,11 @@ namespace _Project.Scripts
         
         private void Update()
         {
-            if (!_lightToUse) return;
+            if (!_lightToUse)
+            {
+                Debug.LogWarning("Please assign a light");
+                return;
+            }
             
             // Initial calculations
             Vector2 laserHitPosition = Circle.PointOnCircle(_circleCenter, radius, Mathf.Tan(slider.value / radius));
