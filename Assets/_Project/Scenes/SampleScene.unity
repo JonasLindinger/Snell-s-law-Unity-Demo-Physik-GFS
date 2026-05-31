@@ -2736,6 +2736,7 @@ MonoBehaviour:
   outgoingLaserLength: 10
   maxBounces: 5
   lineWidth: 0.05
+  startingSliderValue: 1.5
   useRainbowMode: 0
   rainbowRays: 12
   rainbowIntensity: 0.8

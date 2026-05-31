@@ -19,6 +19,8 @@ namespace _Project.Scripts
         [SerializeField] private float outgoingLaserLength = 15f;
         [SerializeField] private int maxBounces = 5;
         [SerializeField] private float lineWidth = 0.05f;
+        [Space(5)]
+        [SerializeField] private float startingSliderValue = 0.25f;
         
         [Header("Dispersion")]
         [SerializeField] private bool useRainbowMode = true;
@@ -44,7 +46,7 @@ namespace _Project.Scripts
             {
                 slider.maxValue = radius * 0.99f;
                 slider.minValue = -radius * 0.99f;
-                slider.value = 0;
+                slider.value = startingSliderValue;
             }
 
             // Robust material initialization
