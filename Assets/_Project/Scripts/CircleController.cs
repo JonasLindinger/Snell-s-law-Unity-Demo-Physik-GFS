@@ -9,146 +9,200 @@ namespace _Project.Scripts
         [Header("References")]
         [SerializeField] private Light _lightToUse;
         [SerializeField] private Slider slider;
-        [SerializeField] private float radius = 1;
-        [SerializeField] private float absLaserStartXPos = 3;
+        
+        [Header("Settings")]
+        [SerializeField] private float radius = 2f;
+        [SerializeField] private float absLaserStartXPos = 5f;
         [SerializeField] private bool directionLeft = true;
-        [SerializeField] private float circleResolution = 36;
-        [SerializeField] private float outgoingLaserLength = 10;
+        [SerializeField] private int circleResolution = 100;
+        [SerializeField] private float outgoingLaserLength = 15f;
+        [SerializeField] private int maxBounces = 5;
+        [SerializeField] private float lineWidth = 0.05f;
+        
+        [Header("Dispersion")]
+        [SerializeField] private bool useRainbowMode = true;
+        [SerializeField] private int rainbowRays = 12;
+        [Range(0, 1)] [SerializeField] private float rainbowIntensity = 0.8f;
+        [SerializeField] private float hdrExposure = 2.0f;
 
-        private List<LineRenderer> _reflections = new List<LineRenderer>();        
-        private List<LineRenderer> _refractions = new List<LineRenderer>();        
+        [Header("Animation")]
+        [SerializeField] private bool autoAnimate = true;
+        [SerializeField] private float animationSpeed = 0.5f;
+        [SerializeField] private float animationAmplitude = 0.8f;
+
+        private List<LineRenderer> _linePool = new List<LineRenderer>();
+        private int _poolIndex = 0;
         
-        private LineRenderer _laser;
-        private LineRenderer _circle;
-        
+        private LineRenderer _circleRenderer;
         private Vector2 _circleCenter = Vector2.zero;
-
-        private void OnValidate()
-        {
-            if (Application.isPlaying)
-            {
-                foreach (var reflection in _reflections)
-                    Destroy(reflection.gameObject);
-                foreach (var refraction in _refractions)
-                    Destroy(refraction.gameObject);   
-            }
-            
-            _reflections.Clear();
-            _refractions.Clear();
-        }
+        private Material _lineMaterial;
 
         private void Start()
         {
-            slider.maxValue = radius;
-            slider.minValue = -radius;
-            slider.value = 0;
+            if (slider)
+            {
+                slider.maxValue = radius * 0.99f;
+                slider.minValue = -radius * 0.99f;
+                slider.value = 0;
+            }
+
+            // Create a simple glowy material if possible
+            _lineMaterial = new Material(Shader.Find("Sprites/Default"));
             
-            _laser = new GameObject("Laser").AddComponent<LineRenderer>();
-            _laser.startWidth = .1f;
-            _laser.endWidth = .1f;
+            InitCircle();
+        }
+
+        private void InitCircle()
+        {
+            GameObject circleObj = new GameObject("CircleBorder");
+            circleObj.transform.SetParent(transform);
+            _circleRenderer = circleObj.AddComponent<LineRenderer>();
+            _circleRenderer.startWidth = 0.08f;
+            _circleRenderer.endWidth = 0.08f;
+            _circleRenderer.loop = true;
+            _circleRenderer.material = _lineMaterial;
+            _circleRenderer.startColor = new Color(0.5f, 0.8f, 1f, 0.5f);
+            _circleRenderer.endColor = new Color(0.5f, 0.8f, 1f, 0.5f);
             
-            _circle = new GameObject("Circle").AddComponent<LineRenderer>();
-            _circle.startWidth = .1f;
-            _circle.endWidth = .1f;
-            _circle.loop = true;
-            
-            // Draw circle
-            List<Vector3> circlePositions = new List<Vector3>();
-            float step = 2 * Mathf.PI / circleResolution;
-            float angle = 0;
+            Vector3[] positions = new Vector3[circleResolution];
             for (int i = 0; i < circleResolution; i++)
             {
-                circlePositions.Add(Circle.PointOnCircle(_circleCenter, radius, angle));
-                angle += step;
+                float angle = i * 2 * Mathf.PI / circleResolution;
+                positions[i] = Circle.PointOnCircle(_circleCenter, radius, angle);
             }
-            _circle.positionCount = circlePositions.Count;
-            _circle.SetPositions(circlePositions.ToArray());
+            _circleRenderer.positionCount = circleResolution;
+            _circleRenderer.SetPositions(positions);
         }
-        
+
         private void Update()
         {
-            if (!_lightToUse)
+            if (!_lightToUse) return;
+
+            _poolIndex = 0;
+
+            float yOffset = slider ? slider.value : 0;
+            if (autoAnimate && !Input.GetMouseButton(0)) // Don't animate if user is dragging slider (assuming)
             {
-                Debug.LogWarning("Please assign a light");
-                return;
+                yOffset = Mathf.Sin(Time.time * animationSpeed) * (radius * animationAmplitude);
+                if (slider) slider.value = yOffset;
             }
-            
-            // Initial calculations
-            Vector2 laserHitPosition = Circle.PointOnCircle(_circleCenter, radius, Mathf.Tan(slider.value / radius));
-            if (directionLeft) laserHitPosition.x *= -1;
-            Vector2 laserStartPosition = new Vector2(directionLeft ? -absLaserStartXPos : absLaserStartXPos, laserHitPosition.y);
 
-            DrawLaser(laserStartPosition, laserHitPosition);
+            float startX = directionLeft ? absLaserStartXPos : -absLaserStartXPos;
             
-            // Use the *actual* incident direction
-            Vector2 incident = (laserHitPosition - laserStartPosition).normalized;
-            
-            // Iteration 0 (air -> water)
-            Vector2 reflectionDir = Reflect(incident, Circle.CircleNormal(_circleCenter, laserHitPosition));
-            Vector2 refractionDir = Refract(laserHitPosition, incident, _lightToUse.airRefractiveIndex, _lightToUse.waterRefractiveIndex);
-            DrawReflectionOutside(0, laserHitPosition, reflectionDir);
-            
-            laserStartPosition = laserHitPosition;
-            laserHitPosition = RaycastInTheCircle(laserStartPosition, refractionDir);
-            DrawRefractionInside(0, laserStartPosition, laserHitPosition);
-            
-            // Iteration 1 (water -> air)
-            incident = (laserHitPosition - laserStartPosition).normalized;
+            Vector2 laserHitPosition = new Vector2(
+                Mathf.Sqrt(Mathf.Max(0, radius * radius - yOffset * yOffset)) * (directionLeft ? 1 : -1),
+                yOffset
+            );
+            Vector2 laserStartPosition = new Vector2(startX, yOffset);
 
-            reflectionDir = Reflect(incident, Circle.CircleNormal(_circleCenter, laserHitPosition)); // In the circle
-            refractionDir = Refract(laserHitPosition, incident, _lightToUse.waterRefractiveIndex, _lightToUse.airRefractiveIndex); // Out of the circle
-            DrawRefractionOutside(1, laserHitPosition, refractionDir);
-            
-            laserStartPosition = laserHitPosition;
-            laserHitPosition = RaycastInTheCircle(laserStartPosition, reflectionDir);
-            DrawReflectionInside(1, laserStartPosition, laserHitPosition);
-            
-            // Iteration 2 (water -> air)
-            incident = (laserHitPosition - laserStartPosition).normalized;
+            if (useRainbowMode)
+            {
+                for (int i = 0; i < rainbowRays; i++)
+                {
+                    float t = (float)i / (rainbowRays - 1);
+                    float wavelength = Mathf.Lerp(380, 750, t);
+                    Color color = Light.WavelengthToRGB(wavelength);
+                    color *= hdrExposure; // HDR intensity
+                    color.a = rainbowIntensity;
+                    float nWater = _lightToUse.GetWaterRefractiveIndex(wavelength);
+                    
+                    SimulateRay(laserStartPosition, laserHitPosition, color, _lightToUse.airRefractiveIndex, nWater);
+                }
+            }
+            else
+            {
+                Color color = _lightToUse.GetColor() * hdrExposure;
+                color.a = rainbowIntensity;
+                float nWater = _lightToUse.GetWaterRefractiveIndex(_lightToUse.waveLength);
+                SimulateRay(laserStartPosition, laserHitPosition, color, _lightToUse.airRefractiveIndex, nWater);
+            }
 
-            reflectionDir = Reflect(incident, Circle.CircleNormal(_circleCenter, laserHitPosition)); // In the circle
-            refractionDir = Refract(laserHitPosition, incident, _lightToUse.waterRefractiveIndex, _lightToUse.airRefractiveIndex); // Out of the circle
-            DrawRefractionOutside(2, laserHitPosition, refractionDir);
-            
-            laserStartPosition = laserHitPosition;
-            laserHitPosition = RaycastInTheCircle(laserStartPosition, reflectionDir);
-            DrawReflectionInside(2, laserStartPosition, laserHitPosition);
-            
-            // Analyze results
-            var angle = Vector2.Angle(directionLeft ? Vector2.left : Vector2.right, refractionDir);
-            Debug.Log(Mathf.RoundToInt(angle) + " degrees");
+            // Deactivate unused lines in pool
+            for (int i = _poolIndex; i < _linePool.Count; i++)
+            {
+                _linePool[i].gameObject.SetActive(false);
+            }
         }
-        
-        private Vector2 Refract(Vector2 laserHitPosition, Vector2 incident, float n1, float n2)
+
+        private void SimulateRay(Vector2 start, Vector2 hit, Color color, float nAir, float nWater)
         {
-            Vector2 normal = Circle.CircleNormal(_circleCenter, laserHitPosition).normalized;
+            // 1. Incoming Laser
+            DrawLine(start, hit, color);
 
-            // Make sure normal faces against the incident ray
-            if (Vector2.Dot(incident, normal) > 0f)
-                normal = -normal;
+            Vector2 incident = (hit - start).normalized;
+            Vector2 normal = Circle.CircleNormal(_circleCenter, hit);
+            
+            // 2. Initial Reflection (Air)
+            Vector2 reflectionDir = Reflect(incident, normal);
+            DrawLine(hit, hit + reflectionDir * outgoingLaserLength, color * 0.3f);
 
-            if (Refract(incident, normal, n1, n2, out var refracted))
-                return refracted.normalized;
-
-            // Total internal reflection fallback
-            return Reflect(incident, normal).normalized;
+            // 3. Initial Refraction (Into Water)
+            if (Refract(incident, normal, nAir, nWater, out Vector2 refractedDir))
+            {
+                TraceInside(hit, refractedDir, color, nWater, nAir, 0);
+            }
         }
-        
-        private bool Refract(
-            Vector2 incident,
-            Vector2 normal,
-            float n1,
-            float n2,
-            out Vector2 refracted)
-        {
-            incident = incident.normalized;
-            normal = normal.normalized;
 
+        private void TraceInside(Vector2 start, Vector2 direction, Color color, float nIn, float nOut, int bounce)
+        {
+            if (bounce >= maxBounces) return;
+
+            Vector2 hit = RaycastInTheCircle(start, direction);
+            DrawLine(start, hit, color);
+
+            Vector2 incident = (hit - start).normalized;
+            Vector2 normal = Circle.CircleNormal(_circleCenter, hit);
+            if (Vector2.Dot(incident, normal) > 0) normal = -normal;
+
+            // Reflection Inside
+            Vector2 reflectDir = Reflect(incident, normal);
+            TraceInside(hit, reflectDir, color * 0.8f, nIn, nOut, bounce + 1);
+
+            // Refraction Outside
+            if (Refract(incident, normal, nIn, nOut, out Vector2 refractOutDir))
+            {
+                DrawLine(hit, hit + refractOutDir * outgoingLaserLength, color);
+            }
+        }
+
+        private void DrawLine(Vector2 start, Vector2 end, Color color)
+        {
+            LineRenderer lr;
+            if (_poolIndex < _linePool.Count)
+            {
+                lr = _linePool[_poolIndex];
+                lr.gameObject.SetActive(true);
+            }
+            else
+            {
+                GameObject go = new GameObject("Ray_" + _poolIndex);
+                go.transform.SetParent(transform);
+                lr = go.AddComponent<LineRenderer>();
+                lr.material = _lineMaterial;
+                _linePool.Add(lr);
+            }
+
+            lr.startWidth = lineWidth;
+            lr.endWidth = lineWidth;
+            lr.startColor = color;
+            lr.endColor = color;
+            lr.SetPosition(0, start);
+            lr.SetPosition(1, end);
+            
+            _poolIndex++;
+        }
+
+        private Vector2 Reflect(Vector2 v, Vector2 normal)
+        {
+            return v - 2f * Vector2.Dot(v, normal) * normal;
+        }
+
+        private bool Refract(Vector2 incident, Vector2 normal, float n1, float n2, out Vector2 refracted)
+        {
             float eta = n1 / n2;
             float cosI = -Vector2.Dot(normal, incident);
             float sinT2 = eta * eta * (1f - cosI * cosI);
 
-            // Total internal reflection
             if (sinT2 > 1f)
             {
                 refracted = Vector2.zero;
@@ -159,165 +213,17 @@ namespace _Project.Scripts
             refracted = eta * incident + (eta * cosI - cosT) * normal;
             return true;
         }
-        
-        private static Vector2 Reflect(Vector2 v, Vector2 normal)
-        {
-            normal = normal.normalized;
-            return v - 2f * Vector2.Dot(v, normal) * normal;
-        }
-        
+
         private Vector2 RaycastInTheCircle(Vector2 startPoint, Vector2 direction)
-                {
-                    // Robust ray-circle intersection (find the EXIT point).
-                    direction = direction.normalized;
-        
-                    Vector2 center = _circleCenter;
-                    Vector2 f = startPoint - center;
-        
-                    // Solve: |f + t*d|^2 = r^2
-                    float a = 1f; // d is normalized
-                    float b = 2f * Vector2.Dot(f, direction);
-                    float c = f.sqrMagnitude - radius * radius;
-        
-                    float discriminant = b * b - 4f * a * c;
-                    if (discriminant < 0f)
-                    {
-                        // No intersection (shouldn't happen if startPoint is on/inside and direction is valid)
-                        return startPoint;
-                    }
-        
-                    float sqrtDisc = Mathf.Sqrt(discriminant);
-                    float t1 = (-b - sqrtDisc) / (2f * a);
-                    float t2 = (-b + sqrtDisc) / (2f * a);
-        
-                    // If startPoint is on the circle, one solution is ~0; we want the other one (exit).
-                    const float epsilon = 1e-4f;
-        
-                    float t = float.NegativeInfinity;
-        
-                    if (t1 > epsilon) t = t1;
-                    if (t2 > epsilon) t = Mathf.Max(t, t2);
-        
-                    if (float.IsNegativeInfinity(t))
-                    {
-                        // Both intersections are behind or too close (ray points outward or numerical edge case)
-                        return startPoint;
-                    }
-        
-                    Vector2 hit = startPoint + direction * t;
-        
-                    return hit;
-                }
-        
-        private void DrawLaser(Vector2 start, Vector2 end)
         {
-            // Set points of Line Renderer
-            Vector3[] laserPositions =
-            {
-                start, 
-                end
-            };
-            _laser?.SetPositions(laserPositions);
-        }
-        
-        private void DrawReflectionOutside(int iteration, Vector2 laserHitPosition, Vector2 reflectionVector)
-        {
-            LineRenderer reflection = null;
+            float b = 2f * Vector2.Dot(startPoint - _circleCenter, direction);
+            float c = (startPoint - _circleCenter).sqrMagnitude - radius * radius;
+            float discriminant = b * b - 4f * c;
             
-            // Create or Get Line Renderer
-            if (iteration >= _reflections.Count)
-            {
-                reflection = new GameObject("Reflection " + iteration).AddComponent<LineRenderer>();
-                reflection.transform.SetParent(transform);
-                reflection.startWidth = .1f;
-                reflection.endWidth = .1f;
-                _reflections.Add(reflection);
-            }
-            else
-                reflection = _reflections[iteration];
-
-            // Set points of Line Renderer
-            Vector3[] reflectionPositions =
-            {
-                laserHitPosition, 
-                laserHitPosition + reflectionVector * outgoingLaserLength
-            };
-            reflection?.SetPositions(reflectionPositions);
-        }
-
-        private void DrawReflectionInside(int iteration, Vector2 start, Vector2 end)
-        {
-            LineRenderer reflection = null;
+            if (discriminant < 0) return startPoint;
             
-            // Create or Get Line Renderer
-            if (iteration >= _reflections.Count)
-            {
-                reflection = new GameObject("Reflection " + iteration).AddComponent<LineRenderer>();
-                reflection.transform.SetParent(transform);
-                reflection.startWidth = .1f;
-                reflection.endWidth = .1f;
-                _reflections.Add(reflection);
-            }
-            else
-                reflection = _reflections[iteration];
-
-            // Set points of Line Renderer
-            Vector3[] reflectionPositions =
-            {
-                start, 
-                end
-            };
-            reflection?.SetPositions(reflectionPositions);
-        }
-        
-        private void DrawRefractionOutside(int iteration, Vector2 laserHitPosition, Vector2 refractionVector)
-        {
-            LineRenderer refraction = null;
-            
-            // Create or Get Line Renderer
-            if (iteration >= _refractions.Count)
-            {
-                refraction = new GameObject("Refraction " + iteration).AddComponent<LineRenderer>();
-                refraction.transform.SetParent(transform);
-                refraction.startWidth = .1f;
-                refraction.endWidth = .1f;
-                _refractions.Add(refraction);
-            }
-            else
-                refraction = _refractions[iteration];
-
-            // Set points of Line Renderer
-            Vector3[] refractionPositions =
-            {
-                laserHitPosition,
-                laserHitPosition + refractionVector * outgoingLaserLength
-            };
-            refraction?.SetPositions(refractionPositions);
-        }
-        
-        private void DrawRefractionInside(int iteration, Vector2 start, Vector2 end)
-        {
-            LineRenderer refraction = null;
-            
-            // Create or Get Line Renderer
-            if (iteration >= _refractions.Count)
-            {
-                refraction = new GameObject("Refraction " + iteration).AddComponent<LineRenderer>();
-                refraction.transform.SetParent(transform);
-                refraction.startWidth = .1f;
-                refraction.endWidth = .1f;
-                _refractions.Add(refraction);
-            }
-            else
-                refraction = _refractions[iteration];
-
-            // Set points of Line Renderer
-            Vector3[] refractionPositions =
-            {
-                start,
-                end
-            };
-            refraction?.SetPositions(refractionPositions);
+            float t = (-b + Mathf.Sqrt(discriminant)) / 2f;
+            return startPoint + direction * t;
         }
     }
 }
