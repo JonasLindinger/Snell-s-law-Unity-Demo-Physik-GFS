@@ -46,8 +46,22 @@ namespace _Project.Scripts
                 slider.value = 0;
             }
 
-            // Create a simple glowy material if possible
-            _lineMaterial = new Material(Shader.Find("Sprites/Default"));
+            // Robust material initialization
+            Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("Legacy Shaders/Transparent/Diffuse");
+            if (shader == null) shader = Shader.Find("Standard");
+            
+            _lineMaterial = new Material(shader);
+            
+            // Clean up any existing generated objects if Start is called again
+            foreach (Transform child in transform)
+            {
+                if (child.name.StartsWith("Ray_") || child.name == "CircleBorder")
+                {
+                    Destroy(child.gameObject);
+                }
+            }
+            _linePool.Clear();
             
             InitCircle();
         }
@@ -81,7 +95,7 @@ namespace _Project.Scripts
             _poolIndex = 0;
 
             float yOffset = slider ? slider.value : 0;
-            if (autoAnimate && !Input.GetMouseButton(0)) // Don't animate if user is dragging slider (assuming)
+            if (autoAnimate && !Input.GetMouseButton(0))
             {
                 yOffset = Mathf.Sin(Time.time * animationSpeed) * (radius * animationAmplitude);
                 if (slider) slider.value = yOffset;
@@ -97,16 +111,29 @@ namespace _Project.Scripts
 
             if (useRainbowMode)
             {
+                // 1. White incoming ray
+                DrawLine(laserStartPosition, laserHitPosition, Color.white * hdrExposure);
+
+                // 2. White initial reflection
+                Vector2 incident = (laserHitPosition - laserStartPosition).normalized;
+                Vector2 normal = Circle.CircleNormal(_circleCenter, laserHitPosition);
+                Vector2 reflectionDir = Reflect(incident, normal);
+                DrawLine(laserHitPosition, laserHitPosition + reflectionDir * outgoingLaserLength, Color.white * hdrExposure * 0.2f);
+
+                // 3. Dispersed internal rays
                 for (int i = 0; i < rainbowRays; i++)
                 {
                     float t = (float)i / (rainbowRays - 1);
                     float wavelength = Mathf.Lerp(380, 750, t);
                     Color color = Light.WavelengthToRGB(wavelength);
-                    color *= hdrExposure; // HDR intensity
+                    color *= hdrExposure;
                     color.a = rainbowIntensity;
                     float nWater = _lightToUse.GetWaterRefractiveIndex(wavelength);
                     
-                    SimulateRay(laserStartPosition, laserHitPosition, color, _lightToUse.airRefractiveIndex, nWater);
+                    if (Refract(incident, normal, _lightToUse.airRefractiveIndex, nWater, out Vector2 refractedDir))
+                    {
+                        TraceInside(laserHitPosition, refractedDir, color, nWater, _lightToUse.airRefractiveIndex, 0);
+                    }
                 }
             }
             else
@@ -123,6 +150,13 @@ namespace _Project.Scripts
                 _linePool[i].gameObject.SetActive(false);
             }
         }
+
+        // UI Accessors
+        public void SetRainbowMode(bool enabled) => useRainbowMode = enabled;
+        public void SetAutoAnimate(bool enabled) => autoAnimate = enabled;
+        public void SetHdrExposure(float value) => hdrExposure = value;
+        public void SetBounces(float value) => maxBounces = Mathf.RoundToInt(value);
+        public void SetWavelength(float value) { if(_lightToUse) _lightToUse.waveLength = value; }
 
         private void SimulateRay(Vector2 start, Vector2 hit, Color color, float nAir, float nWater)
         {
