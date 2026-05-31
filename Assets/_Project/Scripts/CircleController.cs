@@ -13,7 +13,8 @@ namespace _Project.Scripts
         [Header("Settings")]
         [SerializeField] private float radius = 2f;
         [SerializeField] private float absLaserStartXPos = 5f;
-        [SerializeField] private bool directionLeft = true;
+        [SerializeField] private bool StartFromLeft = true;
+        private bool directionLeft => !StartFromLeft;
         [SerializeField] private int circleResolution = 100;
         [SerializeField] private float outgoingLaserLength = 15f;
         [SerializeField] private int maxBounces = 5;

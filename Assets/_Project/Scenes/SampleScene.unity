@@ -2545,9 +2545,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1624699958}
   - component: {fileID: 1624699959}
-  - component: {fileID: 1624699962}
-  - component: {fileID: 1624699961}
-  - component: {fileID: 1624699960}
   m_Layer: 0
   m_Name: CircleController
   m_TagString: Untagged
@@ -2598,51 +2595,6 @@ MonoBehaviour:
   autoAnimate: 0
   animationSpeed: 0.5
   animationAmplitude: 0.8
---- !u!114 &1624699960
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1624699957}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fd7ad9ffe5d046048a2b983c5771a543, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::_Project.Scripts.Light
-  lightName: Blue
-  waveLength: 450
-  airRefractiveIndex: 1.000277
---- !u!114 &1624699961
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1624699957}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fd7ad9ffe5d046048a2b983c5771a543, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::_Project.Scripts.Light
-  lightName: Green
-  waveLength: 550
-  airRefractiveIndex: 1.000277
---- !u!114 &1624699962
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1624699957}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fd7ad9ffe5d046048a2b983c5771a543, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::_Project.Scripts.Light
-  lightName: Red
-  waveLength: 750
-  airRefractiveIndex: 1.000276
 --- !u!1 &1849980849
 GameObject:
   m_ObjectHideFlags: 0
